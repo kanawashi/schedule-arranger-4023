@@ -1,21 +1,32 @@
 'use strict';
 const express = require('express');
 const router = express.Router();
+const { body, param, query, validationResult } = require('express-validator');
 const authenticationEnsurer = require('./authentication-ensurer');
 const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
 const Schedule = require('../models/schedule');
 const Candidate = require('../models/candidate');
 const User = require('../models/user');
 const Availability = require('../models/availability');
 const Comment = require('../models/comment');
-const csrf = require('csurf');
-const csrfProtection = csrf({ cookie: true });
 
-router.get('/new', authenticationEnsurer, csrfProtection, (req, res, next) => {
+router.get('/new', authenticationEnsurer, (req, res, next) => {
   res.render('new', { user: req.user, csrfToken: req.csrfToken() });
 });
 
-router.post('/', authenticationEnsurer, csrfProtection, async (req, res, next) => {
+router.post('/', authenticationEnsurer, async (req, res, next) => {
+  await body('scheduleName').isString().run(req);
+  await body('memo').isString().run(req);
+  await body('candidates').isString().run(req);
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    const err = new Error('入力された情報が不十分または正しくありません。');
+    err.status = 400;
+    return next(err);
+  }
+
   const scheduleId = uuidv4();
   const updatedAt = new Date();
   await Schedule.create({
@@ -29,6 +40,15 @@ router.post('/', authenticationEnsurer, csrfProtection, async (req, res, next) =
 });
 
 router.get('/:scheduleId', authenticationEnsurer, async (req, res, next) => {
+  await param('scheduleId').isUUID('4').run(req);
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    const err = new Error('URLの形式が正しくありません。');
+    err.status = 400;
+    return next(err);
+  }
+
   const schedule = await Schedule.findOne({
     include: [
       {
@@ -98,13 +118,45 @@ router.get('/:scheduleId', authenticationEnsurer, async (req, res, next) => {
     comments.forEach((comment) => {
       commentMap.set(comment.userId, comment.comment);
     });
+
+    //閲覧者の出欠をもつ候補を予定名と共に表示
+    const viewersAvailabilities = await Availability.findAll({
+      include: [
+        {
+          model: Candidate,
+          attributes: ['candidateId', 'candidateName']
+        },
+        {
+          model: Schedule,
+          attributes: ['scheduleId', 'scheduleName']
+        }],
+      where: {
+        [Op.and]: [
+          {userId: req.user.id},
+          {scheduleId: {
+            [Op.ne]: schedule.scheduleId
+          }}
+        ]
+      },
+      order: [[Schedule ,'scheduleId', 'ASC'], ['candidateId', 'ASC']]
+    });
+
+    //予定と出欠候補Map(キー：scheduleName, 値：Map(キー：candidateName,　値:availability))
+    const viewersEntryScheduleMapMap = new Map();
+    viewersAvailabilities.forEach(a => {
+      const map = viewersEntryScheduleMapMap.get(a.schedule.scheduleName) || new Map();
+      map.set(a.candidate.candidateName, a.availability);
+      viewersEntryScheduleMapMap.set(a.schedule.scheduleName, map);
+    });
+
     res.render('schedule', {
       user: req.user,
       schedule: schedule,
       candidates: candidates,
       users: users,
       availabilityMapMap: availabilityMapMap,
-      commentMap: commentMap
+      commentMap: commentMap,
+      viewersEntryScheduleMapMap: viewersEntryScheduleMapMap
     });
   } else {
     const err = new Error('指定された予定は見つかりません');
@@ -113,7 +165,16 @@ router.get('/:scheduleId', authenticationEnsurer, async (req, res, next) => {
   }
 });
 
-router.get('/:scheduleId/edit', authenticationEnsurer, csrfProtection, async (req, res, next) => {
+router.get('/:scheduleId/edit', authenticationEnsurer, async (req, res, next) => {
+  await param('scheduleId').isUUID('4').run(req);
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    const err = new Error('URLの形式が正しくありません。');
+    err.status = 400;
+    return next(err);
+  }
+
   const schedule = await Schedule.findOne({
     where: {
       scheduleId: req.params.scheduleId
@@ -141,7 +202,18 @@ function isMine(req, schedule) {
   return schedule && parseInt(schedule.createdBy) === parseInt(req.user.id);
 }
 
-router.post('/:scheduleId', authenticationEnsurer, csrfProtection, async (req, res, next) => {
+router.post('/:scheduleId', authenticationEnsurer, async (req, res, next) => {
+  await param('scheduleId').isUUID('4').run(req);
+  await body('scheduleName').if(query('edit').equals('1')).isString().run(req);
+  await body('candidates').if(query('edit').equals('1')).isString().run(req);
+  await body('memo').if(query('edit').equals('1')).isString().run(req);
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    const err = new Error('URLまたは入力されたデータの形式が正しくありません。');
+    err.status = 400;
+    return next(err);
+  }
   let schedule = await Schedule.findOne({
     where: {
       scheduleId: req.params.scheduleId

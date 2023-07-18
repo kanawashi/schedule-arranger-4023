@@ -8,6 +8,10 @@ block content
       p(style="white-space:pre;") #{schedule.memo}
     div.card-footer
       p 作成者: #{schedule.user.username}
+  label.form-label(for="share-url") 共有用 URL
+  div.input-group.mb-3
+    input#share-url.form-control(type="text" aria-describedby="copy-button" readonly)
+    button#copy-button.btn.btn-outline-secondary(type="button") Copy
   - var isMine = parseInt(user.id) === schedule.user.userId
   if isMine
     div
@@ -48,3 +52,20 @@ block content
           td
             p
               small #{commentMap.get(user.userId)}
+  h3 この予定以外のあなたの参加予定
+  each [scheduleName, candidateAndAvailabilityMap] of viewersEntryScheduleMapMap
+    div.card.my-3 
+      div.card-header
+        h4 #{scheduleName} 
+      div.card-body
+        table.table.table-sm
+          thead.thead-light 
+            tr 
+              th.text-center 候補
+              th.text-center 出欠
+          each [candidateName, availability] of candidateAndAvailabilityMap
+            - var availabilityLabels = ['欠席', '未定', '出席'];
+            - var tableRowStyle = ['table-danger', 'table-light', 'table-success'];
+            tr(class=`${tableRowStyle[availability]}`)
+              td.text-center #{candidateName}
+              td.text-center #{availabilityLabels[availability]}

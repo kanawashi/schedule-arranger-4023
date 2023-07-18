@@ -6,6 +6,7 @@ var logger = require('morgan');
 const helmet = require('helmet');
 const session = require('express-session');
 const passport = require('passport');
+const csurf = require('tiny-csrf');
 
 // モデルの読み込み
 const User = require('./models/user');
@@ -20,6 +21,7 @@ User.sync().then(async () => {
   Comment.sync();
   Availability.belongsTo(User, {foreignKey: 'userId'});
   await Candidate.sync();
+  Availability.belongsTo(Schedule, {foreignKey: 'scheduleId'});
   Availability.belongsTo(Candidate, {foreignKey: 'candidateId'});
   Availability.sync();
 });
@@ -69,12 +71,18 @@ app.set('view engine', 'pug');
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
+app.use(cookieParser('nyobiko_signed_cookies'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({ secret: 'e55be81b307c1c09', resave: false, saveUninitialized: false }));
 app.use(passport.initialize());
 app.use(passport.session());
+
+app.use(csurf(
+  'nyobikosecretsecret9876543212345',
+  ['POST'],
+  [/.*\/(candidates|comments).*/i] 
+)); 
 
 app.use('/', indexRouter);
 app.use('/login', loginRouter);

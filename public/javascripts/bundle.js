@@ -18991,6 +18991,18 @@ buttonSelfComment.on('click', function () {
     });
   }
 });
+var shareUrl = window.location.href;
+var shareUrlInput = jquery__WEBPACK_IMPORTED_MODULE_0___default()('#share-url');
+var shareUrlCopyButton = jquery__WEBPACK_IMPORTED_MODULE_0___default()('#copy-button');
+shareUrlInput.val(shareUrl);
+shareUrlCopyButton.on('click', function () {
+  navigator.clipboard.writeText(shareUrl).then(function () {
+    shareUrlCopyButton.text('Copied!');
+    setTimeout(function () {
+      return shareUrlCopyButton.text('Copy');
+    }, 1000);
+  });
+});
 })();
 
 /******/ })()
